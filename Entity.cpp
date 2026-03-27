@@ -24,3 +24,28 @@ bool Floor::isWalkable(int x, int y) const{
     }
         return grid[y][x] != TileType::WALL;
     }
+
+
+Floor::Floor(int level){
+    for(int y=0;y<maxHeight;y++){
+        for(int x=0;x<maxWidth;x++){
+            grid[y][x] = TileType::WALL;
+            fog[y][x] = false;
+            
+
+            
+        }
+    }
+    generateLayout();
+}
+
+
+void Floor::generateLayout(){
+
+    for(int y=1;y<maxHeight-1;y++){
+        for(int x=1;x<maxWidth-1;x++){
+            grid[y][x] =TileType::FLOOR;
+            
+
+}
+    }
