@@ -19,5 +19,8 @@ void Floor::updateFog(int px, int py){
 
 
 bool Floor::isWalkable(int x, int y) const{
+    if (x < 0 || x >= maxWidth || y < 0 || y >= maxHeight) {
+        return false;
+    }
         return grid[y][x] != TileType::WALL;
     }
