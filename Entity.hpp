@@ -80,20 +80,10 @@ public:
     vector<unique_ptr<Item>> items;
     vector<unique_ptr<Enemy>> enemies;
     sf::Vector2i entrance, exit;
-    Floor(int level){}
-    void generateLayout(){}
-    void updateFog(int px, int py){
-        for(int dy=-1; dy<=1; dy++) {
-            for(int dx=-1; dx<=1; dx++) {
-                int nx = px + dx; int ny = py + dy;
-                if(nx >=0 && nx < maxWidth && ny >=0 && ny < maxHeight) 
-                    fog[ny][nx] = false;
-            }
-        }
-    }
-    bool isWalkable(int x, int y) const {
-        return grid[y][x] != TileType::WALL;
-    }
+    Floor(int level){};
+    void generateLayout();
+    void updateFog(int px, int py);
+    bool isWalkable(int x, int y) const ;
     TileType getTile(int x, int y) const {return grid[y][x];}
     bool isVisible(int x, int y) const {return !fog[y][x];}
 };
