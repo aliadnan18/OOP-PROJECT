@@ -1,6 +1,8 @@
 #include "Entity.hpp"
+#include <functional>
 #include <queue>
-#include <map>
+#include <climits>
+
 
 struct Node {
     Point pos;
@@ -62,20 +64,183 @@ void Item::draw(sf::RenderWindow& window) {
     shape.setPosition({(float)position.x * tileSize + 15, (float)position.y * tileSize + 15});
     window.draw(shape);
 }
+template <typename T>
+bool isTileOccupied(const std::vector<std::unique_ptr<T>>& entityList, Point target, const Entity* ignoreEntity = nullptr) {
+    for (const auto& entity : entityList) {
+        // Skip checking against itself, then check if positions match
+        if (entity.get() != ignoreEntity && entity->getPosition() == target) {
+            return true; 
+        }
+    }
+    return false;
+}
+
+
+
 
 // --- Enemy AI ---
-void Enemy::moveEnemy(Point playerPos, DungeonFloor& currentFloor, const std::vector<std::unique_ptr<Item>>& itemsOnFloor, const std::vector<std::unique_ptr<Enemy>>& otherEnemies){
-    int distanceToPlayer = std::abs(playerPos.x - position.x) + std::abs(playerPos.y - position.y);
-    if (distanceToPlayer > 0 && distanceToPlayer < 4) {
-        int moveX = 0, moveY = 0;
-        if (playerPos.x > position.x) moveX = 1; else if (playerPos.x < position.x) moveX = -1;
-        else if (playerPos.y > position.y) moveY = 1; else if (playerPos.y < position.y) moveY = -1;
+void Enemy::moveEnemy(Point playerPos, DungeonFloor& currentFloor, 
+                      const std::vector<std::unique_ptr<Item>>& itemsOnFloor, 
+                      const std::vector<std::unique_ptr<Enemy>>& otherEnemies) {
+                      
+   
+    int distances[maxHeight][maxWidth];
+    
+    Point cameFrom[maxHeight][maxWidth]; 
+    
+    for(int i = 0; i<maxHeight; ++i){
+        for(int j = 0;j < maxWidth ; ++j){
+            distances[i][j] = INT_MAX; //so djikstra knows that this path hasnt been explored so far
+           
+            cameFrom[i][j]= {-1,-1};
+
+        }
+    }
+    
+    distances[position.y][position.x] = 0;
+
+     
+    std::priority_queue<Node, std::vector<Node>, std::greater<Node>> pq;
+    
+    
+    pq.push({position, 0});
+
+    bool pathFound = false;
+
+    
+   // THE DIJKSTRA SEARCH LOOP
+   
+    while (!pq.empty()) {
+        Node currentNode = pq.top();
+        pq.pop();
+
         
-        Point targetPosition = { position.x + moveX, position.y + moveY };
-        bool isPathClear = (currentFloor.grid[targetPosition.y][targetPosition.x] == TileType::FLOOR);
-        for (const auto& item : itemsOnFloor) if (item->getPosition() == targetPosition) isPathClear = false;
-        for (const auto& enemy : otherEnemies) if (enemy.get() != this && enemy->getPosition() == targetPosition) isPathClear = false;
-        if (isPathClear) position = targetPosition;
+        if (currentNode.pos == playerPos) {
+            pathFound = true;
+            break;
+        }
+
+       
+        Point neighbors[4] = {
+            {currentNode.pos.x, currentNode.pos.y - 1}, 
+            {currentNode.pos.x, currentNode.pos.y + 1}, 
+            {currentNode.pos.x - 1, currentNode.pos.y}, 
+            {currentNode.pos.x + 1, currentNode.pos.y}  
+        };
+
+        for (int i = 0; i < 4; i++) {
+            Point nextPos = neighbors[i];
+
+            
+            
+            bool isPathClear = false; 
+
+            if(nextPos.x >= 0 && nextPos.x < maxWidth && nextPos.y >= 0 && nextPos.y < maxHeight ){
+                if(currentFloor.grid[nextPos.y][nextPos.x] != TileType::WALL){
+                    
+
+                    if (!isTileOccupied(itemsOnFloor, nextPos) && !isTileOccupied(otherEnemies, nextPos, this)) {
+                        isPathClear = true;
+                    }
+
+                }
+            }
+
+            /*for(auto& items: itemsOnFloor){
+                if(items->getPosition() == nextPos){
+                    isPathClear = false;
+                }
+                
+            }
+
+            for( auto& enemy:otherEnemies){
+                if(enemy.get() != this && enemy->getPosition() == nextPos) isPathClear = false;
+            }*/
+
+
+
+
+
+
+
+
+
+
+            if (isPathClear) {
+                int newDist = currentNode.dist + 1;
+                
+                // If we found a faster route to this neighbor
+                if (newDist < distances[nextPos.y][nextPos.x]) {
+                    distances[nextPos.y][nextPos.x] = newDist;
+                    cameFrom[nextPos.y][nextPos.x] = currentNode.pos;
+                    pq.push({nextPos, newDist});
+                }
+            }
+        }
+    }
+
+    
+    // enemy tries to find you 
+
+    if (pathFound) {
+        // what it is supposed to work like
+        Point tracePos = playerPos;
+
+        while(!(cameFrom[tracePos.y][tracePos.x] == position)){
+            tracePos = cameFrom[tracePos.y][tracePos.x];
+
+
+        }
+        position = tracePos;
+        
+        
+    } else {
+        // random no jutsu. It will now just go fully random searching for the player
+        
+        int direction = rand() % 4;
+        int moveX = 0 , moveY = 0;
+
+        if(direction == 0){
+            moveY = -1;
+        }
+        else if(direction == 1){
+            moveY = 1;
+        }
+        else if(direction == 2){
+            moveX = -1;
+        }
+        else if(direction == 3){
+            moveX = 1;
+        }
+
+        Point target = {position.x + moveX, position.y + moveY};
+
+        if(target.x >=0 && target.x < maxWidth && target.y >= 0 && target.y < maxHeight && currentFloor.grid[target.y][target.x] != TileType::WALL){
+            
+            /*//item checker
+            bool canMove = true;
+            for(auto& item : itemsOnFloor ){
+                if(item->getPosition() == target){
+                    canMove =false;
+                }
+            }
+
+            //other enemy checker
+
+            for(auto& enemy : otherEnemies){
+                if(enemy->getPosition==( target)){
+
+
+                }
+            }*/
+            // i found a better way to do this using templates
+            if (!isTileOccupied(itemsOnFloor, target) && !isTileOccupied(otherEnemies, target, this)) {
+                position = target; // Actually take the step!
+            }
+
+
+        }
+
     }
 }
 
@@ -137,9 +302,11 @@ public:
     }
 
     void handleInput() {
-        while (const std::optional currentEvent = gameWindow.pollEvent()) {
-            if (currentEvent->is<sf::Event::Closed>()) gameWindow.close();
-        }
+       while (const std::optional currentEvent = gameWindow.pollEvent()) {
+        if (currentEvent->is<sf::Event::Closed>()) {
+        gameWindow.close();
+    }
+}
         if (isGameComplete) {
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::R)) {  // this is at the end for restarting game after compeltion
                 floorLevel = 1;
