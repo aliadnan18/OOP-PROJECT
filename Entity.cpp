@@ -265,7 +265,7 @@ void Enemy::moveEnemy(Point playerPos, DungeonFloor& currentFloor,
             }*/
             // i found a better way to do this using templates
             if (!isTileOccupied(itemsOnFloor, target) && !isTileOccupied(otherEnemies, target, this)) {
-                position = target; // Actually take the step!
+                position = target; 
             }
 
 
@@ -304,7 +304,7 @@ public:
     Game(): gameWindow(sf::VideoMode({maxWidth * tileSize, maxHeight * tileSize + 40}), "Random Dungeons") {
         srand((unsigned)time(0));
         damageFlash.setSize(sf::Vector2f(maxWidth * tileSize, maxHeight * tileSize));
-        damageFlash.setFillColor(sf::Color(255, 0, 0, 80)); // transparent red
+        damageFlash.setFillColor(sf::Color(255, 0, 0, 80)); 
         // Load Textures
         if (!playerTex.loadFromFile("player.png")) std::cerr << "Error loading player.png\n";
         if (!enemyTex.loadFromFile("enemy.png")) std::cerr << "Error loading enemy.png\n";
