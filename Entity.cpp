@@ -15,18 +15,21 @@ DungeonFloor::DungeonFloor() {
     for (int row = 0; row < maxHeight; row++) {
         for (int col = 0; col < maxWidth; col++) {
             grid[row][col] = TileType::WALL;
-            fogArray[row][col] = true;
+
+            // fog starts fully hidden
+            fogArray[row][col] = 0.0f;
         }
     }
     generateLevel();
 }
 
+int steps = 500; // Adjust this value to make the dungeon more or less complex
 void DungeonFloor::generateLevel() {
     Point walker = { maxWidth / 2, maxHeight / 2 };
     entrancePosition = walker;
     grid[walker.y][walker.x] = TileType::ENTRANCE;
     std::vector<Point> pathHistory;
-    for (int step = 0; step < 200; step++) {
+    for (int step = 0; step < steps; step++) {
         int direction = rand() % 4;
         if (direction == 0 && walker.y > 1) walker.y--;
         else if (direction == 1 && walker.y < maxHeight - 2) walker.y++;
@@ -35,17 +38,33 @@ void DungeonFloor::generateLevel() {
         grid[walker.y][walker.x] = TileType::FLOOR;
         pathHistory.push_back(walker);
     }
-    exitPosition = pathHistory.back();
+    if (!pathHistory.empty()) {
+        exitPosition = pathHistory.back();
+    } else {
+        exitPosition = entrancePosition;
+    }
     grid[exitPosition.y][exitPosition.x] = TileType::STAIRS;
 }
 
-void DungeonFloor::revealArea(int playerX, int playerY) {
-    for (int offsetY = -2; offsetY <= 2; offsetY++) {
-        for (int offsetX = -2; offsetX <= 2; offsetX++) {
-            int scanX = playerX + offsetX;
-            int scanY = playerY + offsetY;
-            if (scanX >= 0 && scanX < maxWidth && scanY >= 0 && scanY < maxHeight) {
-                fogArray[scanY][scanX] = false;
+void DungeonFloor::revealArea(int playerX, int playerY, GameMode mode) {
+
+    int radius = 3;
+
+    for (int y = 0; y < maxHeight; y++) {
+        for (int x = 0; x < maxWidth; x++) {
+
+            int dx = x - playerX;
+            int dy = y - playerY;
+
+            float dist = std::sqrt(dx * dx + dy * dy);
+
+            float visibility = std::max(0.0f, 1.0f - (dist / radius));
+
+            if (mode == GameMode::NORMAL) {
+                fogArray[y][x] = std::max(fogArray[y][x], visibility);
+            }
+            else {
+                fogArray[y][x] = visibility;
             }
         }
     }
@@ -75,8 +94,12 @@ bool isTileOccupied(const std::vector<std::unique_ptr<T>>& entityList, Point tar
     return false;
 }
 
+bool inVisionRange(Point enemy, Point player, int range = 6) {
+    int dx = enemy.x - player.x;
+    int dy = enemy.y - player.y;
 
-
+    return (dx * dx + dy * dy) <= (range * range);
+}
 
 // --- Enemy AI ---
 void Enemy::moveEnemy(Point playerPos, DungeonFloor& currentFloor, 
@@ -98,18 +121,13 @@ void Enemy::moveEnemy(Point playerPos, DungeonFloor& currentFloor,
     }
     
     distances[position.y][position.x] = 0;
-
-     
     std::priority_queue<Node, std::vector<Node>, std::greater<Node>> pq;
-    
-    
-    pq.push({position, 0});
-
+    bool canSeePlayer = inVisionRange(position, playerPos, 6);
     bool pathFound = false;
 
-    
    // THE DIJKSTRA SEARCH LOOP
-   
+   if (canSeePlayer) {
+   pq.push({position, 0});
     while (!pq.empty()) {
         Node currentNode = pq.top();
         pq.pop();
@@ -178,23 +196,35 @@ void Enemy::moveEnemy(Point playerPos, DungeonFloor& currentFloor,
             }
         }
     }
-
+    }
     
     // enemy tries to find you 
 
     if (pathFound) {
-        // what it is supposed to work like
-        Point tracePos = playerPos;
 
-        while(!(cameFrom[tracePos.y][tracePos.x] == position)){
-            tracePos = cameFrom[tracePos.y][tracePos.x];
+    Point tracePos = playerPos;
 
+    // No parent exists
+    if (cameFrom[tracePos.y][tracePos.x].x == -1)
+        return;
 
-        }
-        position = tracePos;
-        
-        
-    } else {
+    while (true) {
+
+        Point parent = cameFrom[tracePos.y][tracePos.x];
+
+        // corrupted path protection
+        if (parent.x < 0 || parent.y < 0)
+            return;
+
+        // reached enemy
+        if (parent == position)
+            break;
+
+        tracePos = parent;
+    }
+
+    position = tracePos;
+} else {
         // random no jutsu. It will now just go fully random searching for the player
         
         int direction = rand() % 4;
@@ -244,6 +274,7 @@ void Enemy::moveEnemy(Point playerPos, DungeonFloor& currentFloor,
     }
 }
 
+
 // --- Game Engine ---
 class Game {
     sf::RenderWindow gameWindow;
@@ -256,14 +287,24 @@ class Game {
     std::unique_ptr<Player> playerEntity;
     std::vector<std::unique_ptr<Enemy>> activeEnemies;
     std::vector<std::unique_ptr<Item>> floorItems;
+    sf::Clock damageCooldownClock;
+    bool playerDead = false;
     int turnCounter = 0;
     int floorLevel = 1;
     bool isGameComplete = false;
+    GameState gameState = GameState::MENU;
+    GameMode gameMode = GameMode::NORMAL;
+    sf::Clock enemyMoveClock;
+    float enemyMoveDelay = 0.6f; // enemies move every 0.6 seconds
+    sf::RectangleShape damageFlash;
+    sf::Clock flashClock;
+    bool showFlash = false;
 
 public:
     Game(): gameWindow(sf::VideoMode({maxWidth * tileSize, maxHeight * tileSize + 40}), "Random Dungeons") {
         srand((unsigned)time(0));
-        
+        damageFlash.setSize(sf::Vector2f(maxWidth * tileSize, maxHeight * tileSize));
+        damageFlash.setFillColor(sf::Color(255, 0, 0, 80)); // transparent red
         // Load Textures
         if (!playerTex.loadFromFile("player.png")) std::cerr << "Error loading player.png\n";
         if (!enemyTex.loadFromFile("enemy.png")) std::cerr << "Error loading enemy.png\n";
@@ -274,46 +315,169 @@ public:
         resetDungeon();
     }
 
+    void renderMenu() {
+    gameWindow.clear(sf::Color(10, 10, 20));
+    sf::Text title(gameFont, "RANDOM DUNGEONS", 40);
+    title.setPosition({200, 100});
+    sf::Text start(gameFont, "Normal Mode(N)", 25);
+    start.setPosition({200, 250});
+    sf::Text hard(gameFont, "Hard Mode(H)", 25);
+    hard.setPosition({200, 300});
+    sf::Text exit(gameFont, "EXIT(ESC)", 25);
+    exit.setPosition({200, 350});
+
+    gameWindow.draw(title);
+    gameWindow.draw(start);
+    gameWindow.draw(hard);
+    gameWindow.draw(exit);
+    gameWindow.display();
+    }   
+
     void resetDungeon() {
-        if (floorLevel > 5) { isGameComplete = true; return; }
-        currentFloor = std::make_unique<DungeonFloor>();
-        playerEntity = std::make_unique<Player>(currentFloor->entrancePosition.x, currentFloor->entrancePosition.y, playerTex);
-        currentFloor->revealArea(playerEntity->getPosition().x, playerEntity->getPosition().y);
-        activeEnemies.clear();
-        floorItems.clear();
-        turnCounter = 0;
+    if (floorLevel > 5) {
+        gameState = GameState::WIN;
+        activeMessage = "SUCCESSFULLY ESCAPED! PRESS R TO RESTART|PRESS M TO RETURN TO MENU";
+        return;
+    }
 
-        int enemiesPlaced = 0;
-        while (enemiesPlaced < 4) {
-            int randomX = rand() % maxWidth, randomY = rand() % maxHeight;
-            if (currentFloor->grid[randomY][randomX] == TileType::FLOOR && std::abs(randomX - playerEntity->getPosition().x) > 4) {
-                activeEnemies.push_back(std::make_unique<Enemy>(randomX, randomY, enemyTex));
-                enemiesPlaced++;
-            }
-        }
+    currentFloor = std::make_unique<DungeonFloor>();
 
-        for (int attempt = 0; attempt < 2; attempt++) {
-            int randomX = rand() % maxWidth, randomY = rand() % maxHeight;
-            if (currentFloor->grid[randomY][randomX] == TileType::FLOOR && rand() % 100 < 40) {
-                floorItems.push_back(std::make_unique<Item>(randomX, randomY, "Reveal Potion", dummyTex));
-            }
+    if (!playerEntity) {
+        playerEntity = std::make_unique<Player>(
+            currentFloor->entrancePosition.x,
+            currentFloor->entrancePosition.y,
+            playerTex
+        );
+    } else {
+        playerEntity->setPosition(currentFloor->entrancePosition);
+        // ❌ NO HP RESET HERE
+    }
+
+    currentFloor->revealArea(
+        playerEntity->getPosition().x,
+        playerEntity->getPosition().y, gameMode
+    );
+
+    activeEnemies.clear();
+    floorItems.clear();
+    turnCounter = 0;
+
+    int enemiesPlaced = 0;
+    while (enemiesPlaced < 4) {
+        int randomX = rand() % maxWidth;
+        int randomY = rand() % maxHeight;
+
+        if (currentFloor->grid[randomY][randomX] == TileType::FLOOR &&
+            std::abs(randomX - playerEntity->getPosition().x) > 4) {
+
+            activeEnemies.push_back(
+                std::make_unique<Enemy>(randomX, randomY, enemyTex)
+            );
+            enemiesPlaced++;
         }
-        activeMessage = "Dungeon Floor: " + std::to_string(floorLevel) + " / 5";
+    }
+
+    for (int attempt = 0; attempt < 2; attempt++) {
+        int randomX = rand() % maxWidth;
+        int randomY = rand() % maxHeight;
+
+        if (currentFloor->grid[randomY][randomX] == TileType::FLOOR &&
+            rand() % 100 < 40) {
+
+            floorItems.push_back(
+                std::make_unique<Item>(randomX, randomY, "Reveal Potion", dummyTex)
+            );
+        }
+    }
+
+    activeMessage = "Dungeon Floor: " + std::to_string(floorLevel) + " / 5";
+    }
+
+
+    void resetGame() {
+    floorLevel = 1;
+    playerDead = false;
+    isGameComplete = false;
+    if (playerEntity) {
+    playerEntity->resetHealth();
+    } 
+    resetDungeon();
     }
 
     void handleInput() {
+        if (gameState == GameState::MENU) {
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::N)) {
+            gameMode = GameMode::NORMAL;
+            gameState = GameState::PLAYING;
+            resetDungeon();
+        }
+
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::H)) {
+            gameMode = GameMode::HARD;
+            gameState = GameState::PLAYING;
+            resetDungeon();
+        }
+
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Escape)) {
+            gameWindow.close();
+        }
+
+        return;
+        }
+        if (gameState == GameState::GAME_OVER) {
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::R)) {
+                resetGame();
+                gameState = GameState::PLAYING;
+            }
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::M)) {
+                resetGame();
+                gameState = GameState::MENU;
+            }
+
+            return;
+        }
+
+        if (gameState == GameState::WIN) {
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::R)) {
+                resetGame();
+                gameState = GameState::PLAYING;
+            }
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Escape)) {
+                gameState = GameState::MENU;
+            }
+
+            return;
+        }
+
        while (const std::optional currentEvent = gameWindow.pollEvent()) {
-        if (currentEvent->is<sf::Event::Closed>()) {
-        gameWindow.close();
-    }
-}
+            if (currentEvent->is<sf::Event::Closed>()) {
+            gameWindow.close();
+            }
+        }
+        if (playerDead) {
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::R)) {
+
+                floorLevel = 1;
+                playerDead = false;
+                resetGame();
+                activeMessage = "New Run Started!";
+                messageClock.restart();
+            }
+
+            return;
+        }
         if (isGameComplete) {
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::R)) {  // this is at the end for restarting game after compeltion
                 floorLevel = 1;
                 isGameComplete = false;
                 activeMessage = "Restarting...";
                 messageClock.restart();
-                resetDungeon();
+                resetGame();
             }
             return;
         }
@@ -326,17 +490,45 @@ public:
         else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D)) moveX = 1;
 
         if (moveX != 0 || moveY != 0) {
-            Point target = {playerEntity->getPosition().x + moveX, playerEntity->getPosition().y + moveY};
-            if (target.x >= 0 && target.x < maxWidth && target.y >= 0 && target.y < maxHeight && 
-                currentFloor->grid[target.y][target.x] != TileType::WALL) {
-                playerEntity->move(moveX, moveY);
-                currentFloor->revealArea(playerEntity->getPosition().x, playerEntity->getPosition().y);
-                turnCounter++;
-                if (turnCounter % 4 == 0) {
-                    for (auto& enemy : activeEnemies) enemy->moveEnemy(playerEntity->getPosition(), *currentFloor, floorItems, activeEnemies);
+
+            Point target = {
+                playerEntity->getPosition().x + moveX,
+                playerEntity->getPosition().y + moveY
+            };
+
+            bool enemyThere = false;
+
+            for (auto& enemy : activeEnemies) {
+                if (enemy->getPosition() == target) {
+                    enemyThere = true;
+                    break;
                 }
+            }
+
+            if (target.x >= 0 && target.x < maxWidth &&
+                target.y >= 0 && target.y < maxHeight &&
+                currentFloor->grid[target.y][target.x] != TileType::WALL &&
+                !enemyThere)
+            {
+                playerEntity->move(moveX, moveY);
+                currentFloor->revealArea(playerEntity->getPosition().x,
+                                        playerEntity->getPosition().y,
+                                        gameMode);
+
                 inputCooldownClock.restart();
             }
+        }
+        if (enemyMoveClock.getElapsedTime().asSeconds() >= enemyMoveDelay){
+            for (auto& enemy : activeEnemies){
+                enemy->moveEnemy(
+                    playerEntity->getPosition(),
+                    *currentFloor,
+                    floorItems,
+                    activeEnemies
+                );
+            }
+
+            enemyMoveClock.restart();
         }
     }
 
@@ -345,8 +537,16 @@ public:
             activeMessage = "Dungeon explored! Press R to Restart."; 
             return; 
         }
+        if (gameMode == GameMode::HARD) {
+        currentFloor->revealArea(
+            playerEntity->getPosition().x,
+            playerEntity->getPosition().y,
+            gameMode
+        );
+        }
         if (playerEntity->getPosition() == currentFloor->exitPosition) { 
-            floorLevel++; 
+            floorLevel++;
+            steps -= 50; // increase complexity for next floor 
             resetDungeon(); 
         }
         // potion pickup logic
@@ -355,54 +555,135 @@ public:
                 activeMessage = "Map Revealed!";
                 for (int row = 0; row < maxHeight; row++)
                     for (int col = 0; col < maxWidth; col++)
-                        currentFloor->fogArray[row][col] = false;
+                        currentFloor->fogArray[row][col] = 1.0f;
 
                 messageClock.restart();
                 itemIterator = floorItems.erase(itemIterator);
             } else ++itemIterator;
         }
 
-        // this is when enemy collides with player object so floor resets and this is temporary as we didnt implement combat yet
+        bool playerHit = false;
+
         for (auto& enemy : activeEnemies) {
+
             if (enemy->getPosition() == playerEntity->getPosition()) {
-                activeMessage = "You are caught by monster, restarting floor...";
-                messageClock.restart();
-                resetDungeon(); 
-                return;
+
+                playerHit = true;
+                break;
             }
         }
 
-        if (messageClock.getElapsedTime().asSeconds() > 2.0f) 
-            activeMessage = "Dungeon Floor: " + std::to_string(floorLevel) + " / 5";
+        if (playerHit &&
+            damageCooldownClock.getElapsedTime().asSeconds() > 1.0f) {
+
+            playerEntity->takeDamage(20);
+            showFlash = true;
+            flashClock.restart();
+            damageCooldownClock.restart();
+
+            activeMessage =
+                "Player HP: " +
+                std::to_string(playerEntity->getHealth());
+
+            messageClock.restart();
+
+            if (playerEntity->isDead()) {
+                gameState = GameState::GAME_OVER;
+                activeMessage = "GAME OVER! PRESS R TO RESTART|PRESS M TO RETURN TO MENU";
+            }
+        }
+
+        if (!playerDead &&
+    messageClock.getElapsedTime().asSeconds() > 2.0f){
+    activeMessage ="Dungeon Floor: " +std::to_string(floorLevel) +" / 5";
     }
+}
 
     void renderFrame() {
         gameWindow.clear(sf::Color(20, 15, 10));
         sf::RectangleShape tileShape({tileSize - 2.f, tileSize - 2.f});
         for (int row = 0; row < maxHeight; row++) {
             for (int col = 0; col < maxWidth; col++) {
-                if (currentFloor->fogArray[row][col]) continue;
+
                 tileShape.setPosition({(float)col * tileSize, (float)row * tileSize});
-                if (currentFloor->grid[row][col] == TileType::WALL) tileShape.setFillColor(sf::Color(70, 60, 50));
-                else if (currentFloor->grid[row][col] == TileType::STAIRS) tileShape.setFillColor(sf::Color::Blue);
-                else tileShape.setFillColor(sf::Color(150, 140, 130));
+
+                sf::Color baseColor;
+
+                if (currentFloor->grid[row][col] == TileType::WALL)
+                    baseColor = sf::Color(70, 60, 50);
+                else if (currentFloor->grid[row][col] == TileType::STAIRS)
+                    baseColor = sf::Color::Blue;
+                else
+                    baseColor = sf::Color(150, 140, 130);
+
+                // SIMPLE FOG (old style back)
+                if (currentFloor->fogArray[row][col] < 0.05f)
+                    baseColor = sf::Color(20, 15, 10); // dark fog overlay
+
+                tileShape.setFillColor(baseColor);
                 gameWindow.draw(tileShape);
             }
         }
-        for (auto& item : floorItems) if (!currentFloor->fogArray[item->getPosition().y][item->getPosition().x]) item->draw(gameWindow);
-        for (auto& enemy : activeEnemies) if (!currentFloor->fogArray[enemy->getPosition().y][enemy->getPosition().x]) enemy->draw(gameWindow);
+        for (auto& item : floorItems){
+            float fog = currentFloor->fogArray[item->getPosition().y][item->getPosition().x];
+            if (fog > 0.05f)
+            item->draw(gameWindow);
+        }
+        for (auto& enemy : activeEnemies) {
+            float fog = currentFloor->fogArray[enemy->getPosition().y][enemy->getPosition().x];
+            if (fog > 0.05f) {
+                enemy->draw(gameWindow);
+            }
+        }
         playerEntity->draw(gameWindow);
         
         if (interfaceText) {
             interfaceText->setString(activeMessage);
             gameWindow.draw(*interfaceText);
         }
+              // HP BAR
+        float barWidth = 200.f;
+        float barHeight = 20.f;
+
+        float healthPercent =
+            (float)playerEntity->getHealth() /
+            playerEntity->getMaxHealth();
+
+        // background
+        sf::RectangleShape backBar({barWidth, barHeight});
+        backBar.setFillColor(sf::Color(60, 60, 60));
+        backBar.setPosition({10.f, 10.f});
+
+        // green health
+        sf::RectangleShape healthBar(
+            {barWidth * healthPercent, barHeight}
+        );
+
+        healthBar.setFillColor(sf::Color::Green);
+        healthBar.setPosition({10.f, 10.f});
+        if (showFlash) {
+            if (flashClock.getElapsedTime().asMilliseconds() < 120) {
+                gameWindow.draw(damageFlash);
+            } else {
+                showFlash = false;
+            }
+        }
+
+        gameWindow.draw(backBar);
+        gameWindow.draw(healthBar);
         gameWindow.display();
     }
 
     void run() {
         while (gameWindow.isOpen()) {
+
             handleInput();
+
+            if (gameState == GameState::MENU) {
+                renderMenu();
+                continue;
+            }
+
             updateLogic();
             renderFrame();
         }

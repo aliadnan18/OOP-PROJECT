@@ -11,8 +11,19 @@
 const int tileSize = 40;
 const int maxWidth = 20;
 const int maxHeight = 15;
-enum class TileType { WALL, FLOOR, STAIRS, ENTRANCE };
+enum class TileType { 
+    WALL, FLOOR, STAIRS, ENTRANCE };
+enum class GameState {
+    MENU,
+    PLAYING,
+    GAME_OVER,
+    WIN
+};
 
+enum class GameMode {
+    NORMAL,
+    HARD
+};
 struct Point {
     int x, y;
     bool operator==(const Point& other) const {
@@ -23,11 +34,11 @@ struct Point {
 class DungeonFloor {
 public:
     TileType grid[maxHeight][maxWidth];
-    bool fogArray[maxHeight][maxWidth];
+    float fogArray[maxHeight][maxWidth];
     Point entrancePosition, exitPosition;
     DungeonFloor();
     void generateLevel();
-    void revealArea(int playerX, int playerY);
+    void revealArea(int playerX, int playerY, GameMode mode);
 };
 
 class Entity {
@@ -63,16 +74,38 @@ public:
 class Character : public Entity {
 protected:
     int healthPoints;
+    int maxHealth;
+
 public:
-    Character(int x, int y, const sf::Texture& texture, int health) 
-        : Entity(x, y, texture), healthPoints(health) {}
+    Character(int x, int y, const sf::Texture& texture, int health)
+        : Entity(x, y, texture),
+          healthPoints(health),
+          maxHealth(health) {}
+
     void setPosition(Point newPos) { position = newPos; }
+
+    int getHealth() const { return healthPoints; }
+    int getMaxHealth() const { return maxHealth; }
+
+    void takeDamage(int damage) {
+        healthPoints -= damage;
+
+        if (healthPoints < 0)
+            healthPoints = 0;
+    }
+
+    bool isDead() const {
+        return healthPoints <= 0;
+    }
 };
 
 class Player : public Character {
 public:
     Player(int x, int y, const sf::Texture& tex) : Character(x, y, tex, 100) {}
     void move(int deltaX, int deltaY) { position.x += deltaX; position.y += deltaY; }
+    void resetHealth() {
+    healthPoints = 100;
+    }
 };
 
 class Enemy : public Character {
