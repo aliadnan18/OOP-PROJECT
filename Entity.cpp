@@ -131,7 +131,8 @@ void Enemy::moveEnemy(Point playerPos, DungeonFloor& currentFloor,
     while (!pq.empty()) {
         Node currentNode = pq.top();
         pq.pop();
-
+        if (currentNode.dist != distances[currentNode.pos.y][currentNode.pos.x])
+            continue;
         
         if (currentNode.pos == playerPos) {
             pathFound = true;
@@ -208,21 +209,24 @@ void Enemy::moveEnemy(Point playerPos, DungeonFloor& currentFloor,
     if (cameFrom[tracePos.y][tracePos.x].x == -1)
         return;
 
-    while (true) {
+    int safetyCounter = 0;
+
+    while (safetyCounter < 100) {
 
         Point parent = cameFrom[tracePos.y][tracePos.x];
 
-        // corrupted path protection
         if (parent.x < 0 || parent.y < 0)
             return;
 
-        // reached enemy
         if (parent == position)
             break;
 
         tracePos = parent;
-    }
 
+        safetyCounter++;
+    }
+    if (safetyCounter >= 100)
+    return;
     position = tracePos;
 } else {
         // random no jutsu. It will now just go fully random searching for the player
@@ -439,7 +443,7 @@ public:
                 gameState = GameState::PLAYING;
             }
 
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Escape)) {
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::M)) {
                 gameState = GameState::MENU;
             }
 
@@ -526,6 +530,9 @@ public:
     }
 
     void updateLogic() {
+    if (gameState == GameState::WIN || gameState == GameState::GAME_OVER){
+        return;
+    }
         if (isGameComplete) { 
             activeMessage = "Dungeon explored! Press R to Restart."; 
             return; 
@@ -542,10 +549,10 @@ public:
             if (floorLevel > 5) {
                 gameState = GameState::WIN;
                 activeMessage =
-                    "DUNGEON EXPLORED! PRESS R TO RESTART | ESC FOR MENU";
+                    "DUNGEON EXPLORED! PRESS R TO RESTART | M FOR MENU";
                 return;
             }
-            steps -= 50;
+            steps -= 30;
             resetDungeon();
             return;
         }
@@ -677,15 +684,17 @@ public:
     void run() {
         while (gameWindow.isOpen()) {
 
-            handleInput();
+        handleInput();
 
-            if (gameState == GameState::MENU) {
-                renderMenu();
-                continue;
-            }
+        if (gameState == GameState::MENU) {
+            renderMenu();
+            continue;
+        }
 
+        if (gameState == GameState::PLAYING)
             updateLogic();
-            renderFrame();
+
+        renderFrame();
         }
     }
 };
