@@ -71,7 +71,7 @@ void DungeonFloor::revealArea(int playerX, int playerY, GameMode mode) {
 }
 
 // --- Rendering Logic ---
-void Entity::draw(sf::RenderWindow& window) {
+void Character::draw(sf::RenderWindow& window) {
     sprite.setPosition({(float)position.x * tileSize + tileSize / 2.0f, 
                         (float)position.y * tileSize + tileSize / 2.0f});
     window.draw(sprite);
