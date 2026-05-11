@@ -444,6 +444,7 @@ public:
             }
 
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::M)) {
+                resetGame();
                 gameState = GameState::MENU;
             }
 
