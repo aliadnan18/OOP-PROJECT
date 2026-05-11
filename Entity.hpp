@@ -46,9 +46,9 @@ protected:
     Point position;
     sf::Sprite sprite; 
 public:
-    // Use an initializer list to set up the sprite immediately
+   
     Entity(int x, int y, const sf::Texture& texture) 
-        : position({x, y}), sprite(texture) // Initialize sprite with the texture here
+        : position({x, y}), sprite(texture)
     {
         // Scale 16x16 sprite to fit roughly 80% of the 40x40 tile
         float scaleFactor = (tileSize * 0.8f) / 16.0f;
@@ -64,7 +64,7 @@ public:
 
 class Item : public Entity {
     std::string itemName;
-    sf::Color renderColor; // Items still use shapes for now as requested
+    sf::Color renderColor; 
 public:
     Item(int x, int y, std::string name, const sf::Texture& dummy) 
         : Entity(x, y, dummy), itemName(name), renderColor(sf::Color::Yellow) {}
