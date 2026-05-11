@@ -59,7 +59,7 @@ public:
     }
     virtual ~Entity() = default;
     Point getPosition() const { return position; }
-    virtual void draw(sf::RenderWindow& window);
+    virtual void draw(sf::RenderWindow& window)=0;
 };
 
 class Item : public Entity {
@@ -97,6 +97,8 @@ public:
     bool isDead() const {
         return healthPoints <= 0;
     }
+
+    void draw(sf::RenderWindow& window) override;
 };
 
 class Player : public Character {
