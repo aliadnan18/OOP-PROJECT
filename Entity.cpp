@@ -265,7 +265,7 @@ void Enemy::moveEnemy(Point playerPos, DungeonFloor& currentFloor,
             }*/
             // i found a better way to do this using templates
             if (!isTileOccupied(itemsOnFloor, target) && !isTileOccupied(otherEnemies, target, this)) {
-                position = target; // Actually take the step!
+                position = target; 
             }
 
 
@@ -304,7 +304,7 @@ public:
     Game(): gameWindow(sf::VideoMode({maxWidth * tileSize, maxHeight * tileSize + 40}), "Random Dungeons") {
         srand((unsigned)time(0));
         damageFlash.setSize(sf::Vector2f(maxWidth * tileSize, maxHeight * tileSize));
-        damageFlash.setFillColor(sf::Color(255, 0, 0, 80)); // transparent red
+        damageFlash.setFillColor(sf::Color(255, 0, 0, 80)); 
         // Load Textures
         if (!playerTex.loadFromFile("player.png")) std::cerr << "Error loading player.png\n";
         if (!enemyTex.loadFromFile("enemy.png")) std::cerr << "Error loading enemy.png\n";
@@ -334,14 +334,7 @@ public:
     }   
 
     void resetDungeon() {
-    if (floorLevel > 5) {
-        gameState = GameState::WIN;
-        activeMessage = "SUCCESSFULLY ESCAPED! PRESS R TO RESTART|PRESS M TO RETURN TO MENU";
-        return;
-    }
-
     currentFloor = std::make_unique<DungeonFloor>();
-
     if (!playerEntity) {
         playerEntity = std::make_unique<Player>(
             currentFloor->entrancePosition.x,
@@ -544,10 +537,17 @@ public:
             gameMode
         );
         }
-        if (playerEntity->getPosition() == currentFloor->exitPosition) { 
+        if (playerEntity->getPosition() == currentFloor->exitPosition) {
             floorLevel++;
-            steps -= 50; // increase complexity for next floor 
-            resetDungeon(); 
+            if (floorLevel > 5) {
+                gameState = GameState::WIN;
+                activeMessage =
+                    "DUNGEON EXPLORED! PRESS R TO RESTART | ESC FOR MENU";
+                return;
+            }
+            steps -= 50;
+            resetDungeon();
+            return;
         }
         // potion pickup logic
         for (auto itemIterator = floorItems.begin(); itemIterator != floorItems.end();) {
